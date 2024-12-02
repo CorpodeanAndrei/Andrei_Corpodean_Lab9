@@ -5,6 +5,7 @@ using Grpc.Net.Client;
 using Andrei_Corpodean_Lab9;
 using System.Threading;
 using Grpc.Core;
+using Google.Protobuf.WellKnownTypes;
 
 namespace gRPCClient.Controllers;
 
@@ -27,11 +28,12 @@ public class HomeController : Controller
         return View();
     }
 
-    public async Task<IActionResult> Unary()
+    [HttpGet("Home/Unary/{no}")]
+    public async Task<IActionResult> Unary(int nr)
     {
         var channel = GrpcChannel.ForAddress("https://localhost:7239");
         var client = new Greeter.GreeterClient(channel);
-        var reply = await client.SendStatusAsync(new SRequest { No = 3 });
+        var reply = await client.SendStatusAsync(new SRequest { No = nr });
         return View("ShowStatus", (object)ChangetoDictionary(reply));
     }
     private Dictionary<string, string> ChangetoDictionary(SResponse response)
@@ -49,21 +51,21 @@ public class HomeController : Controller
         return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
     }
 
-    public async Task<IActionResult> ServerStreaming()
+    [HttpGet("Home/ServerStreaming/{duration?}")]
+    public async Task<IActionResult> ServerStreaming(int? duration = 5)
     {
         var channel = GrpcChannel.ForAddress("https://localhost:7239");
         var client = new Greeter.GreeterClient(channel);
         Dictionary<string, string> statusDict = new Dictionary<string, string>();
         var cts = new CancellationTokenSource();
-        cts.CancelAfter(TimeSpan.FromSeconds(5));
-        using (var call = client.SendStatusSS(new SRequest { }, cancellationToken: cts.Token))
+        cts.CancelAfter(TimeSpan.FromSeconds(duration ?? 5));
+        using (var call = client.SendStatusSS(new SRequest { }))
         {
             try
             {
                 await foreach (var message in call.ResponseStream.ReadAllAsync())
                 {
-                    statusDict.Add(message.StatusInfo[0].Author,
-                   message.StatusInfo[0].Description);
+                    statusDict.Add(message.StatusInfo[0].Author, message.StatusInfo[0].Description);
                 }
             }
             catch (RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.Cancelled)
@@ -74,12 +76,12 @@ public class HomeController : Controller
         return View("ShowStatus", (object)statusDict);
     }
 
-    public async Task<IActionResult> ClientStreaming()
+    [HttpGet("Home/ClientStreaming")]
+    public async Task<IActionResult> ClientStreaming([FromQuery] int[] statuses)
     {
         var channel = GrpcChannel.ForAddress("https://localhost:7239");
         var client = new Greeter.GreeterClient(channel);
         Dictionary<string, string> statusDict = new Dictionary<string, string>();
-        int[] statuses = { 3, 2, 4 };
         using (var call = client.SendStatusCS())
         {
             foreach (var sT in statuses)
@@ -94,7 +96,8 @@ public class HomeController : Controller
         return View("ShowStatus", (object)statusDict);
     }
 
-    public async Task<IActionResult> BiDirectionalStreaming()
+    [HttpGet("Home/BiDirectionalStreaming")]
+    public async Task<IActionResult> BiDirectionalStreaming([FromQuery] int[] statuses)
     {
         var channel = GrpcChannel.ForAddress("https://localhost:7239");
         var client = new Greeter.GreeterClient(channel);
@@ -110,8 +113,7 @@ public class HomeController : Controller
                         statusDict.Add(status.Author, status.Description);
                 }
             });
-            int[] statusNo = { 3, 2, 4 };
-            foreach (var sT in statusNo)
+            foreach (var sT in statuses)
             {
                 await call.RequestStream.WriteAsync(new SRequest { No = sT });
             }
